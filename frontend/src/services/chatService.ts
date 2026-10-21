@@ -2,6 +2,24 @@ import { getAuthToken } from './apiClient';
 
 import { ContentBlock, DiscussionRound } from '../types';
 
+function formatErrorDetail(detail: unknown): string {
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (detail && typeof detail === 'object') {
+    const value = detail as Record<string, unknown>;
+    const message = value.error || value.message || value.detail;
+    const code = value.error_code || value.code;
+    if (typeof message === 'string' && message.trim()) {
+      return typeof code === 'string' && code.trim() ? `${code}: ${message}` : message;
+    }
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return 'Backend trả về chi tiết lỗi không đọc được';
+    }
+  }
+  return detail == null ? '' : String(detail);
+}
+
 export interface ChatPayload {
   messages: Array<{ role: string; content: string; image?: string; images?: string[]; files?: any[] }>;
   prompt: string;
@@ -62,7 +80,7 @@ export const chatService = {
       let detail = `Lỗi ${res.status}: ${res.statusText}`;
       try {
         const errJson = await res.json();
-        detail = errJson.detail || errJson.message || detail;
+        detail = formatErrorDetail(errJson.detail ?? errJson.message) || detail;
       } catch {
         // ignore
       }
@@ -98,7 +116,7 @@ export const chatService = {
       let detail = `Lỗi ${res.status}: ${res.statusText}`;
       try {
         const errJson = await res.json();
-        detail = errJson.detail || errJson.message || detail;
+        detail = formatErrorDetail(errJson.detail ?? errJson.message) || detail;
       } catch {
         // ignore
       }
@@ -145,10 +163,16 @@ export const chatService = {
             } else if (currentEvent === 'done') {
               if (onDone) onDone(dataObj);
             } else if (currentEvent === 'error') {
-              throw new Error(dataObj.error || 'Lỗi streaming');
+              throw new Error(formatErrorDetail(dataObj) || 'Backend báo lỗi streaming');
             }
           } catch (e: any) {
-            if (e.message && e.message.includes('Lỗi streaming')) throw e;
+            if (currentEvent === 'error') {
+              throw e instanceof Error ? e : new Error(formatErrorDetail(e));
+            }
+            if (e instanceof SyntaxError) {
+              throw new Error('Backend trả về dữ liệu streaming không hợp lệ');
+            }
+            throw e;
           }
         }
       }

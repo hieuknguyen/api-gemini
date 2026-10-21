@@ -1,10 +1,58 @@
 """Wire validation shared by the upstream client and the chat routes."""
 
 import json
+import re
+from html import unescape
 from typing import Any, Dict, Iterator, Optional
 
 
 PROTOCOL_VERSION = "graft-gateway/1"
+
+
+def _clean_error_text(value: Any, *, limit: int = 1200) -> str:
+    """Turn an upstream error into short, readable text without leaking secrets."""
+    text = unescape(str(value or "")).strip()
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+", "Bearer [REDACTED]", text)
+    text = re.sub(
+        r"(?i)(access_token|refresh_token|api[_-]?key|x-api-key)\s*[:=]\s*([\"']?)[^\s,;}\"']+\2",
+        r"\1=[REDACTED]",
+        text,
+    )
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) > limit:
+        return text[: limit - 1].rstrip() + "…"
+    return text
+
+
+def format_upstream_error(status_code: int, response_text: Any) -> str:
+    """Extract a useful provider error from JSON/HTML without exposing credentials."""
+    raw = str(response_text or "").strip()
+    payload = None
+    if raw:
+        try:
+            payload = json.loads(raw)
+        except (TypeError, ValueError):
+            payload = None
+
+    error = payload.get("error") if isinstance(payload, dict) else None
+    if isinstance(error, dict):
+        message = error.get("message") or error.get("detail")
+        provider_code = error.get("status") or error.get("code")
+    else:
+        message = None
+        provider_code = None
+
+    if not message and isinstance(payload, dict):
+        message = payload.get("detail") or payload.get("message")
+    if not message:
+        message = raw
+    message = _clean_error_text(message) or "Upstream không trả về chi tiết lỗi."
+
+    prefix = f"Google upstream HTTP {status_code}"
+    if provider_code and str(provider_code) != str(status_code):
+        prefix += f" {provider_code}"
+    return f"{prefix}: {message}"
 
 
 class GatewayProtocolError(RuntimeError):
@@ -43,7 +91,10 @@ def response_inner(data: Any) -> Dict[str, Any]:
         error = envelope.get("error")
         if error:
             message = error.get("message") if isinstance(error, dict) else str(error)
-            raise GatewayProtocolError("UPSTREAM_ERROR", message or "Upstream báo lỗi.")
+            provider_code = (error.get("status") or error.get("code")) if isinstance(error, dict) else None
+            if provider_code:
+                message = f"{provider_code}: {message}"
+            raise GatewayProtocolError("UPSTREAM_ERROR", _clean_error_text(message) or "Upstream báo lỗi.")
         feedback = envelope.get("promptFeedback") or {}
         if isinstance(feedback, dict):
             reason = feedback.get("blockReason")

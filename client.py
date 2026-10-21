@@ -10,7 +10,8 @@ from threading import local
 from typing import Optional, List, Dict, Any, Tuple
 from gateway_protocol import (GatewayProtocolError, check_cancelled, response_inner,
                               validate_finish_reason, validate_completion,
-                              normalize_usage, stream_records, candidate_parts)
+                              normalize_usage, stream_records, candidate_parts,
+                              format_upstream_error)
 import config
 from account_manager import account_manager
 from quota_tracker import quota_tracker
@@ -508,6 +509,7 @@ class AntigravityClient:
                         break  # Rebuild model-specific options before retrying.
 
                     elif res.status_code == 429 or "RESOURCE_EXHAUSTED" in res.text:
+                        last_error = format_upstream_error(res.status_code, res.text)
                         retry_delay = 8  # Tối ưu: 8s cooldown để phục hồi nhanh
                         if "Retry-After" in res.headers:
                             try:
@@ -531,13 +533,14 @@ class AntigravityClient:
                         break  # Thử tài khoản tiếp theo
 
                     elif res.status_code == 401:
+                        last_error = format_upstream_error(res.status_code, res.text)
                         # Refresh token và thử lại
                         self.get_token_for_account(account, force_refresh=True,
                                                    should_cancel=should_cancel, register_response=register_response)
                         break
 
                     else:
-                        last_error = f"{res.status_code}: {res.text}"
+                        last_error = format_upstream_error(res.status_code, res.text)
                 except GatewayProtocolError as exc:
                     if usage_meta:
                         exc.usage = normalize_usage(usage_meta, None, "", estimate_missing=False)
@@ -551,7 +554,11 @@ class AntigravityClient:
                     if res is not None:
                         res.close()
 
-        raise RuntimeError(f"Không thể hoàn thành yêu cầu sau nhiều lần thử tài khoản: {last_error}")
+        raise GatewayProtocolError(
+            "UPSTREAM_HTTP_ERROR",
+            last_error or "Google upstream không hoàn thành yêu cầu và không trả về chi tiết lỗi.",
+            retryable=True,
+        )
 
     def generate_stream(
         self,
@@ -887,17 +894,19 @@ class AntigravityClient:
                         break
 
                     elif res.status_code == 429 or "RESOURCE_EXHAUSTED" in res.text:
+                        last_error = format_upstream_error(res.status_code, res.text)
                         retry_delay = 8
                         account_manager.mark_rate_limited(acc_id, retry_delay, f"Rate limited 429")
                         break
 
                     elif res.status_code == 401:
+                        last_error = format_upstream_error(res.status_code, res.text)
                         self.get_token_for_account(account, force_refresh=True,
                                                    should_cancel=should_cancel, register_response=register_response)
                         break
 
                     else:
-                        last_error = f"{res.status_code}: {res.text}"
+                        last_error = format_upstream_error(res.status_code, res.text)
 
                 except GatewayProtocolError as exc:
                     if usage_meta:
@@ -918,6 +927,10 @@ class AntigravityClient:
                     if res is not None:
                         res.close()
 
-        raise RuntimeError(f"Không thể hoàn thành yêu cầu streaming sau nhiều lần thử tài khoản: {last_error}")
+        raise GatewayProtocolError(
+            "UPSTREAM_HTTP_ERROR",
+            last_error or "Google upstream không hoàn thành yêu cầu streaming và không trả về chi tiết lỗi.",
+            retryable=True,
+        )
 
 antigravity_client = AntigravityClient()

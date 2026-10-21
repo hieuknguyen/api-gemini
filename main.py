@@ -1563,6 +1563,16 @@ async def gemini_stream_generate_content(
                             ]
                         }
                         yield f"data: {json.dumps(chunk_payload, ensure_ascii=False)}\n\n"
+                elif ev_type == "error":
+                    error_payload = {
+                        "error": {
+                            "code": ev.get("error_code", "UPSTREAM_ERROR"),
+                            "message": ev.get("error", "AI Gateway báo lỗi."),
+                            "retryable": bool(ev.get("retryable", False)),
+                        }
+                    }
+                    yield f"data: {json.dumps(error_payload, ensure_ascii=False)}\n\n"
+                    return
                 elif ev_type == "done":
                     final_usage = ev.get("usage", {})
                     user_manager.record_usage(api_token, final_usage.get("total_tokens", 0))
