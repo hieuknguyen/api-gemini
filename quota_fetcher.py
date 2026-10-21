@@ -62,7 +62,7 @@ def fetch_account_quota(account: Dict[str, Any], force_refresh: bool = False) ->
         result["error"] = str(e)
         return result
 
-    project_id = account.get("project_id") or "aicode-consumers"
+    project_id = config.ANTIGRAVITY_PROJECT_ID
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",

@@ -132,7 +132,7 @@ class AccountManager:
                 "email": acc.get("email"),
                 "name": acc.get("name"),
                 "picture": acc.get("picture"),
-                "project_id": acc.get("project_id"),
+                "project_id": config.ANTIGRAVITY_PROJECT_ID,
                 "is_active": acc.get("is_active", True),
                 "is_primary": acc.get("is_primary", False),
                 "is_rate_limited": cooldown_left > 0,
@@ -332,30 +332,10 @@ class AccountManager:
         return {}
 
     def resolve_project_id(self, access_token: str) -> str:
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json",
-            **config.ANTIGRAVITY_HEADERS
-        }
-        for endpoint in config.ENDPOINTS:
-            try:
-                res = requests.post(
-                    f"{endpoint}/v1internal:loadCodeAssist",
-                    headers=headers,
-                    json={"metadata": {"ideType": "IDE_UNSPECIFIED", "platform": "PLATFORM_UNSPECIFIED", "pluginType": "GEMINI"}},
-                    timeout=10
-                )
-                if res.status_code == 200:
-                    proj = res.json().get("cloudaicompanionProject")
-                    if isinstance(proj, dict):
-                        return proj.get("id", "aicode-consumers")
-                    elif isinstance(proj, str):
-                        return proj
-                elif res.status_code == 404:
-                    continue
-            except Exception:
-                pass
-        return "aicode-consumers"
+        # Do not call loadCodeAssist to discover or provision a project. That
+        # endpoint can return a user-owned GCP project and make generation
+        # depend on its Cloud Code API/IAM configuration.
+        return config.ANTIGRAVITY_PROJECT_ID
 
     def add_or_update_account(self, refresh_token: str, custom_name: Optional[str] = None) -> Dict[str, Any]:
         token_res = requests.post(

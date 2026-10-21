@@ -121,6 +121,11 @@ ENDPOINTS = [
     "https://cloudcode-pa.googleapis.com"
 ]
 
+# Use Antigravity's shared consumer project by default. Users do not need to
+# create or enable a Google Cloud project for this gateway's Antigravity flow.
+# Set ANTIGRAVITY_PROJECT_ID only when an explicitly configured project is needed.
+ANTIGRAVITY_PROJECT_ID = os.getenv("ANTIGRAVITY_PROJECT_ID", "aicode-consumers").strip() or "aicode-consumers"
+
 OAUTH_PORTS = [51121, 51122, 51123, 51124, 51125, 51126]
 OAUTH_SCOPES = [
     "https://www.googleapis.com/auth/cloud-platform",

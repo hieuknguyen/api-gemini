@@ -323,7 +323,7 @@ class AntigravityClient:
 
             acc_id = account["id"]
             acc_email = account.get("email", "unknown")
-            project_id = account.get("project_id") or "aicode-consumers"
+            project_id = config.ANTIGRAVITY_PROJECT_ID
 
             try:
                 token = self.get_token_for_account(account, should_cancel=should_cancel, register_response=register_response)
@@ -663,7 +663,7 @@ class AntigravityClient:
 
             acc_id = account["id"]
             acc_email = account.get("email", "unknown")
-            project_id = account.get("project_id") or "aicode-consumers"
+            project_id = config.ANTIGRAVITY_PROJECT_ID
 
             try:
                 token = self.get_token_for_account(account, should_cancel=should_cancel, register_response=register_response)

@@ -16,6 +16,7 @@ services:
       - MYSQL_USER=antigravity
       - MYSQL_PASSWORD=antigravity_secret
       - MYSQL_DATABASE=antigravity_db
+      - ANTIGRAVITY_PROJECT_ID=${ANTIGRAVITY_PROJECT_ID:-aicode-consumers}
     volumes:
       - ./accounts.json:/app/accounts.json
       - ./skills.json:/app/skills.json
