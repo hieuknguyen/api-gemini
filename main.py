@@ -1756,6 +1756,19 @@ def exchange_oauth_code(req: OAuthExchangeRequest, admin: Dict[str, Any] = Depen
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.post("/api/accounts/{account_id}/refresh-token")
+def get_account_refresh_token(account_id: str, admin: Dict[str, Any] = Depends(verify_admin_access)):
+    """Return a refresh token only to an authenticated administrator for manual transfer."""
+    account = account_manager.get_account_by_id(account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản Google.")
+
+    refresh_token = str(account.get("refresh_token") or "").strip()
+    if not refresh_token:
+        raise HTTPException(status_code=404, detail="Tài khoản không có refresh token.")
+
+    return {"refresh_token": refresh_token}
+
 @app.post("/api/accounts/{account_id}/toggle")
 def toggle_account(account_id: str, admin: Dict[str, Any] = Depends(verify_admin_access)):
     new_state = account_manager.toggle_account(account_id)

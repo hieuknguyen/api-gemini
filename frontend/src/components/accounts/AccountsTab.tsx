@@ -26,6 +26,7 @@ import {
   CalendarRange,
   CalendarDays,
   Sparkles,
+  Copy,
 } from 'lucide-react';
 
 export const AccountsTab: React.FC = () => {
@@ -44,6 +45,7 @@ export const AccountsTab: React.FC = () => {
   const [manualToken, setManualToken] = useState('');
   const [manualName, setManualName] = useState('');
   const [submittingManual, setSubmittingManual] = useState(false);
+  const [copyingTokenId, setCopyingTokenId] = useState<string | null>(null);
 
   const fetchAccounts = async () => {
     try {
@@ -166,6 +168,28 @@ export const AccountsTab: React.FC = () => {
       fetchAccounts();
     } catch (err: any) {
       showToast(err.message || 'Kiểm tra tài khoản thất bại', 'error');
+    }
+  };
+
+  const handleCopyRefreshToken = async (account: GoogleAccount) => {
+    if (!window.confirm(`Sao chép refresh token của ${account.email}? Token có quyền truy cập Google, không chia sẻ cho người khác.`)) {
+      return;
+    }
+
+    if (!navigator.clipboard?.writeText) {
+      showToast('Trình duyệt không hỗ trợ sao chép an toàn. Hãy dùng HTTPS hoặc localhost.', 'error');
+      return;
+    }
+
+    setCopyingTokenId(account.id);
+    try {
+      const result = await accountService.getRefreshToken(account.id);
+      await navigator.clipboard.writeText(result.refresh_token);
+      showToast('Đã sao chép refresh token. Hãy dán ngay vào hệ thống đích.', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Không thể lấy refresh token', 'error');
+    } finally {
+      setCopyingTokenId(null);
     }
   };
 
@@ -569,6 +593,19 @@ export const AccountsTab: React.FC = () => {
                         <Star className="w-3.5 h-3.5" />
                       </button>
                     )}
+
+                    <button
+                      onClick={() => handleCopyRefreshToken(a)}
+                      disabled={copyingTokenId === a.id}
+                      className="p-2 rounded-xl bg-slate-800 hover:bg-blue-500/20 text-slate-400 hover:text-blue-400 text-xs font-semibold border border-slate-700 transition disabled:opacity-50"
+                      title="Sao chép refresh token để dán sang hệ thống khác"
+                    >
+                      {copyingTokenId === a.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                    </button>
                   </div>
 
                   <button

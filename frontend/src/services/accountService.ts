@@ -44,6 +44,12 @@ export const accountService = {
     });
   },
 
+  async getRefreshToken(id: string): Promise<{ refresh_token: string }> {
+    return apiRequest(`/api/accounts/${id}/refresh-token`, {
+      method: 'POST',
+    });
+  },
+
   async deleteAccount(id: string): Promise<any> {
     return apiRequest(`/api/accounts/${id}`, {
       method: 'DELETE',
