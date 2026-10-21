@@ -4,6 +4,16 @@ Gateway AI hiệu năng cao viết bằng FastAPI kết nối trực tiếp Goog
 
 ---
 
+## Deploy VPS bằng GitHub Actions
+
+Workflow `Deploy VPS` tự chạy khi có push lên `main`. Nó đồng bộ source vào thư mục ứng dụng trên VPS, giữ nguyên `.env` và các file tài khoản/database, chỉ build/recreate `antigravity-gateway`, rồi kiểm tra `/health`. VPS cần có SSH, `rsync`, Docker Compose, network `alan` và thư mục ứng dụng đã cấu hình sẵn. Dùng IP VPS hoặc DNS chỉ dành cho SSH; hostname đi qua proxy Cloudflare thường không chuyển tiếp cổng SSH.
+
+Chạy `bash scripts/setup-vps-cicd.sh` từ Git Bash, WSL hoặc Linux tại thư mục gốc repo. Wizard tạo GitHub Actions variables và SSH key secret, hướng dẫn cài public key và xác minh fingerprint của VPS. Sau khi workflow được commit và push, vào **Actions → Deploy VPS → Run workflow** để deploy lần đầu; các push tiếp theo lên `main` sẽ tự deploy.
+
+Workflow không gửi `.env` hay dữ liệu runtime từ runner lên VPS, không xóa file trên VPS và không restart MySQL/Traefik.
+
+---
+
 ## 🐳 1. Khởi động bằng Docker (Khuyên Dùng)
 
 Ứng dụng đã được Docker hóa hoàn chỉnh, tự động mount các file dữ liệu (accounts, skills, settings, quota, .env) để không bị mất khi restart container:

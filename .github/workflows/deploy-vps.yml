@@ -1,0 +1,105 @@
+name: Deploy VPS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: api-gemini-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build and deploy gateway
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VPS_HOST: ${{ vars.VPS_HOST }}
+      VPS_USER: ${{ vars.VPS_USER }}
+      VPS_PORT: ${{ vars.VPS_PORT }}
+      VPS_APP_PATH: ${{ vars.VPS_APP_PATH }}
+      VPS_KNOWN_HOSTS: ${{ vars.VPS_KNOWN_HOSTS }}
+      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate deployment settings and prepare SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${VPS_HOST:?Set repository variable VPS_HOST}"
+          : "${VPS_USER:?Set repository variable VPS_USER}"
+          : "${VPS_PORT:?Set repository variable VPS_PORT}"
+          : "${VPS_APP_PATH:?Set repository variable VPS_APP_PATH}"
+          : "${VPS_KNOWN_HOSTS:?Set repository variable VPS_KNOWN_HOSTS}"
+          : "${VPS_SSH_KEY:?Set repository secret VPS_SSH_KEY}"
+
+          [[ "$VPS_PORT" =~ ^[0-9]{1,5}$ ]] && (( VPS_PORT > 0 && VPS_PORT < 65536 ))
+          [[ "$VPS_APP_PATH" == /* && "$VPS_APP_PATH" != "/" && "$VPS_APP_PATH" != *".."* && "$VPS_APP_PATH" =~ ^/[A-Za-z0-9._/-]+$ ]]
+
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$VPS_SSH_KEY" > "$HOME/.ssh/api-gemini-deploy"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/api-gemini-deploy" "$HOME/.ssh/known_hosts"
+
+      - name: Preflight VPS and sync source
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh_opts=(-p "$VPS_PORT" -i "$HOME/.ssh/api-gemini-deploy" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$HOME/.ssh/known_hosts")
+          target="$VPS_USER@$VPS_HOST"
+
+          ssh "${ssh_opts[@]}" "$target" "command -v rsync >/dev/null && test -w '$VPS_APP_PATH' && test -f '$VPS_APP_PATH/.env' && docker compose -f '$VPS_APP_PATH/docker-compose.yml' config --quiet && docker network inspect alan >/dev/null"
+
+          rsync -az \
+            --exclude='/.git/' \
+            --exclude='/.env' \
+            --exclude='/.env.*' \
+            --exclude='/accounts.json' \
+            --exclude='/api_keys.json' \
+            --exclude='/users.json' \
+            --exclude='/settings.json' \
+            --exclude='/skills.json' \
+            --exclude='/quota.db' \
+            --exclude='/__pycache__/' \
+            --exclude='/frontend/node_modules/' \
+            --exclude='/frontend/dist/' \
+            --exclude='/.graft-sync-backups/' \
+            -e "ssh -p $VPS_PORT -i $HOME/.ssh/api-gemini-deploy -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts" \
+            ./ "$target:$VPS_APP_PATH/"
+
+      - name: Build, recreate, and verify gateway
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh_opts=(-p "$VPS_PORT" -i "$HOME/.ssh/api-gemini-deploy" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$HOME/.ssh/known_hosts")
+          target="$VPS_USER@$VPS_HOST"
+
+          ssh "${ssh_opts[@]}" "$target" "VPS_APP_PATH='$VPS_APP_PATH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd "$VPS_APP_PATH"
+          docker compose config --quiet
+          docker compose build antigravity-gateway
+          docker compose up -d --no-deps --force-recreate antigravity-gateway
+
+          for attempt in $(seq 1 30); do
+            if docker compose exec -T antigravity-gateway python -c 'import json, urllib.request; data=json.load(urllib.request.urlopen("http://127.0.0.1:5678/health", timeout=5)); assert data.get("status") == "healthy"' >/dev/null 2>&1; then
+              echo "Gateway health check passed."
+              docker compose ps antigravity-gateway
+              exit 0
+            fi
+            sleep 2
+          done
+
+          docker compose ps antigravity-gateway
+          docker compose logs --tail=100 antigravity-gateway
+          exit 1
+          REMOTE
