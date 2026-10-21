@@ -14,6 +14,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       API_KEY: ${API_KEY:?Set API_KEY in .env}
       OAUTH_REDIRECT_URI: ${OAUTH_REDIRECT_URI:-https://api-gemini.quackquack.icu/api/accounts/oauth/callback}
+      OAUTH_PUBLIC_BASE_URL: ${OAUTH_PUBLIC_BASE_URL:-https://api-gemini.quackquack.icu}
       ANTIGRAVITY_PROJECT_ID: ${ANTIGRAVITY_PROJECT_ID:-aicode-consumers}
     volumes:
       - ./accounts.json:/app/accounts.json

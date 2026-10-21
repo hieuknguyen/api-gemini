@@ -1685,14 +1685,24 @@ def list_accounts(admin: Dict[str, Any] = Depends(verify_admin_access)):
     return account_manager.get_accounts_public()
 
 @app.post("/api/accounts/oauth/start")
-def start_oauth_flow(admin: Dict[str, Any] = Depends(verify_admin_access)):
+def start_oauth_flow(request: Request, admin: Dict[str, Any] = Depends(verify_admin_access)):
     if not config.CLIENT_ID or not config.CLIENT_SECRET:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Chưa cấu hình Google OAuth Client ID và Client Secret trong trang Cài đặt quản trị."
         )
     try:
-        return account_manager.start_oauth_flow()
+        # Behind Cloudflare/Traefik, the public host is preserved in Host or
+        # X-Forwarded-Host. If this request came through that host, use the
+        # production callback even if a stale local .env value exists on VPS.
+        forwarded_host = request.headers.get("x-forwarded-host", "")
+        request_host = forwarded_host.split(",", 1)[0].strip() or request.headers.get("host", "")
+        request_hostname = request_host.split(":", 1)[0].lower()
+        production_redirect_uri = None
+        if request_hostname == config.OAUTH_PUBLIC_HOST:
+            production_redirect_uri = f"{config.OAUTH_PUBLIC_BASE_URL}/api/accounts/oauth/callback"
+
+        return account_manager.start_oauth_flow(redirect_uri_override=production_redirect_uri)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -2,6 +2,7 @@ import os
 import json
 import time
 import secrets
+import urllib.parse
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -134,6 +135,14 @@ else:
     API_KEY = os.getenv("API_KEY", "")
 
 OAUTH_REDIRECT_URI = os.getenv("OAUTH_REDIRECT_URI", "").strip()
+# Public URL used when the gateway is accessed through the production domain.
+# The per-environment OAUTH_REDIRECT_URI is still used for local development,
+# while the API endpoint can safely select this URL for production requests.
+OAUTH_PUBLIC_BASE_URL = os.getenv(
+    "OAUTH_PUBLIC_BASE_URL",
+    "https://api-gemini.quackquack.icu"
+).strip().rstrip("/")
+OAUTH_PUBLIC_HOST = (urllib.parse.urlparse(OAUTH_PUBLIC_BASE_URL).hostname or "").lower()
 
 CLIENT_ID = str(_persisted.get(GOOGLE_OAUTH_CLIENT_ID_SETTING, "") or "")
 CLIENT_SECRET = str(_persisted.get(GOOGLE_OAUTH_CLIENT_SECRET_SETTING, "") or "")

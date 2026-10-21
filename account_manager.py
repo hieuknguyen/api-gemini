@@ -523,12 +523,21 @@ class AccountManager:
         except Exception:
             pass
 
-    def start_oauth_flow(self, host: str = "0.0.0.0") -> Dict[str, Any]:
+    def start_oauth_flow(
+        self,
+        host: str = "0.0.0.0",
+        redirect_uri_override: Optional[str] = None,
+    ) -> Dict[str, Any]:
         if not config.CLIENT_ID or not config.CLIENT_SECRET:
             raise ValueError("Chưa cấu hình Google OAuth Client ID và Client Secret trong trang Cài đặt quản trị.")
 
         selected_port = None
-        if config.OAUTH_REDIRECT_URI:
+        if redirect_uri_override:
+            # The authorization request and token exchange must use the same
+            # redirect URI. Keep the production callback fixed for the entire
+            # flow when the app is opened through the public domain.
+            redirect_uri = redirect_uri_override
+        elif config.OAUTH_REDIRECT_URI:
             redirect_uri = config.OAUTH_REDIRECT_URI
         else:
             # Local development fallback; production should set OAUTH_REDIRECT_URI.
