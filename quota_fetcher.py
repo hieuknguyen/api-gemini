@@ -1,5 +1,6 @@
 import time
 import logging
+import json
 import requests
 from typing import Dict, Any, Optional, List, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -12,6 +13,20 @@ logger = logging.getLogger("antigravity-quota-fetcher")
 # Cache lưu trữ quota của từng account: account_id -> (data, expire_timestamp)
 _QUOTA_CACHE: Dict[str, Tuple[Dict[str, Any], float]] = {}
 CACHE_TTL = 90  # 90 giây
+
+
+def _format_upstream_error(status_code: int, response_text: str) -> str:
+    """Return the useful Google error message without dumping the full payload."""
+    try:
+        payload = json.loads(response_text)
+        error = payload.get("error", {}) if isinstance(payload, dict) else {}
+        message = error.get("message") if isinstance(error, dict) else None
+        if message:
+            return f"{status_code}: {message}"
+    except (json.JSONDecodeError, TypeError, ValueError):
+        pass
+
+    return f"{status_code}: {response_text[:500]}" if response_text else str(status_code)
 
 
 def fetch_account_quota(account: Dict[str, Any], force_refresh: bool = False) -> Dict[str, Any]:
@@ -89,7 +104,7 @@ def fetch_account_quota(account: Dict[str, Any], force_refresh: bool = False) ->
                 result["error"] = "Google Quota 429 Rate Limited"
                 last_err = "429 Rate Limited"
             else:
-                last_err = f"{res.status_code}: {res.text[:150]}"
+                last_err = _format_upstream_error(res.status_code, res.text)
         except Exception as ex:
             last_err = str(ex)
 

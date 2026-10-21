@@ -32,6 +32,35 @@ import {
   Activity
 } from 'lucide-react';
 
+function formatQuotaError(error?: string | null): string {
+  if (!error) return 'Máy chủ không trả về chi tiết lỗi. Hãy bấm nút làm mới để thử lại.';
+
+  const message = error.trim();
+  const status = message.match(/^(\d{3}):\s*/)?.[1];
+
+  if (/Cloud Code Private API has not been used|SERVICE_DISABLED/i.test(message)) {
+    const project = message.match(/project\s+([\w-]+)/i)?.[1];
+    return `Cloud Code Private API chưa được bật${project ? ` trong Google Cloud project ${project}` : ' trong Google Cloud project của tài khoản'}. Chủ project cần bật API này hoặc cấp quyền cho project đúng.`;
+  }
+  if (/invalid_grant|token has been expired|refresh token.*expired/i.test(message)) {
+    return 'Refresh token đã hết hạn hoặc bị thu hồi. Hãy đăng nhập Google lại để kết nối tài khoản.';
+  }
+  if (status === '401') {
+    return 'Google từ chối xác thực tài khoản (401). Hãy đăng nhập Google lại để cấp token mới.';
+  }
+  if (status === '403') {
+    return `Google từ chối quyền truy cập (403): ${message.replace(/^403:\s*/, '').slice(0, 350)}`;
+  }
+  if (status === '429') {
+    return 'Google đang giới hạn số lượt gọi (429). Hãy chờ quota hồi lại rồi thử tiếp.';
+  }
+
+  const safeMessage = message
+    .replace(/Bearer\s+[\w.-]+/gi, 'Bearer [đã ẩn]')
+    .replace(/(refresh[_ -]?token\s*[:=]\s*)[^\s,;}]+/gi, '$1[đã ẩn]');
+  return safeMessage.slice(0, 400);
+}
+
 export const AccountsTab: React.FC = () => {
   const { isAdmin, openAuthModal } = useAuth();
   const { showToast } = useToast();
@@ -704,7 +733,7 @@ export const AccountsTab: React.FC = () => {
                           </span>
                         ) : accQuotaRealtime?.status === 'error' ? (
                           <span className="text-[10px] text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20">
-                            Lỗi Token
+                            Có lỗi
                           </span>
                         ) : (
                           <span className="text-[10px] text-slate-500 flex items-center space-x-1">
@@ -713,6 +742,13 @@ export const AccountsTab: React.FC = () => {
                           </span>
                         )}
                       </div>
+
+                      {accQuotaRealtime?.status === 'error' && (
+                        <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-2.5 py-2 text-[11px] leading-relaxed text-red-300 break-words">
+                          <span className="font-semibold text-red-200">Nguyên nhân: </span>
+                          {formatQuotaError(accQuotaRealtime.error)}
+                        </div>
+                      )}
 
                       {/* Gemini Quota Bar */}
                       <div className="space-y-1">
