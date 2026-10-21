@@ -42,46 +42,6 @@ export interface GoogleAccount {
   picture?: string;
 }
 
-export interface ModelQuotaInfo {
-  used_percent: number;
-  remaining_percent: number;
-  remaining_fraction?: number;
-  reset_time?: string | null;
-}
-
-export interface AccountQuotaData {
-  account_id: string;
-  email: string;
-  name?: string;
-  picture?: string;
-  is_active: boolean;
-  is_primary: boolean;
-  status: string;
-  error?: string | null;
-  gemini: ModelQuotaInfo;
-  claude: ModelQuotaInfo;
-  last_updated: number;
-}
-
-export interface QuotaOverviewResponse {
-  timestamp: number;
-  total_accounts: number;
-  active_accounts: number;
-  healthy_count: number;
-  exhausted_count: number;
-  summary: {
-    gemini: {
-      avg_used_percent: number;
-      avg_remaining_percent: number;
-    };
-    claude: {
-      avg_used_percent: number;
-      avg_remaining_percent: number;
-    };
-  };
-  accounts: Record<string, AccountQuotaData>;
-}
-
 export interface Skill {
   id: string;
   user_id?: string | null;

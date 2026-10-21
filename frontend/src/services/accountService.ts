@@ -1,14 +1,9 @@
 import { apiRequest } from './apiClient';
-import { GoogleAccount, QuotaOverviewResponse } from '../types';
+import { GoogleAccount } from '../types';
 
 export const accountService = {
   async getAccounts(): Promise<GoogleAccount[]> {
     return apiRequest<GoogleAccount[]>('/api/accounts');
-  },
-
-  async getQuotaOverview(forceRefresh: boolean = false): Promise<QuotaOverviewResponse> {
-    const url = forceRefresh ? '/api/accounts/quota-overview?force_refresh=true' : '/api/accounts/quota-overview';
-    return apiRequest<QuotaOverviewResponse>(url);
   },
 
   async addManualAccount(refreshTokenOrUrl: string, name?: string): Promise<any> {

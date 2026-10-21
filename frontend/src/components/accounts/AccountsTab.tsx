@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { GoogleAccount, QuotaOverviewResponse, AccountQuotaData } from '../../types';
+import { GoogleAccount } from '../../types';
 import { accountService } from '../../services/accountService';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -25,41 +25,8 @@ import {
   Calendar,
   CalendarRange,
   CalendarDays,
-  Gauge,
   Sparkles,
-  Cpu,
-  Zap,
-  Activity
 } from 'lucide-react';
-
-function formatQuotaError(error?: string | null): string {
-  if (!error) return 'Máy chủ không trả về chi tiết lỗi. Hãy bấm nút làm mới để thử lại.';
-
-  const message = error.trim();
-  const status = message.match(/^(\d{3}):\s*/)?.[1];
-
-  if (/Cloud Code Private API has not been used|SERVICE_DISABLED/i.test(message)) {
-    const project = message.match(/project\s+([\w-]+)/i)?.[1];
-    return `Cloud Code Private API chưa được bật${project ? ` trong Google Cloud project ${project}` : ' trong Google Cloud project của tài khoản'}. Chủ project cần bật API này hoặc cấp quyền cho project đúng.`;
-  }
-  if (/invalid_grant|token has been expired|refresh token.*expired/i.test(message)) {
-    return 'Refresh token đã hết hạn hoặc bị thu hồi. Hãy đăng nhập Google lại để kết nối tài khoản.';
-  }
-  if (status === '401') {
-    return 'Google từ chối xác thực tài khoản (401). Hãy đăng nhập Google lại để cấp token mới.';
-  }
-  if (status === '403') {
-    return `Google từ chối quyền truy cập (403): ${message.replace(/^403:\s*/, '').slice(0, 350)}`;
-  }
-  if (status === '429') {
-    return 'Google đang giới hạn số lượt gọi (429). Hãy chờ quota hồi lại rồi thử tiếp.';
-  }
-
-  const safeMessage = message
-    .replace(/Bearer\s+[\w.-]+/gi, 'Bearer [đã ẩn]')
-    .replace(/(refresh[_ -]?token\s*[:=]\s*)[^\s,;}]+/gi, '$1[đã ẩn]');
-  return safeMessage.slice(0, 400);
-}
 
 export const AccountsTab: React.FC = () => {
   const { isAdmin, openAuthModal } = useAuth();
@@ -71,10 +38,6 @@ export const AccountsTab: React.FC = () => {
   const [filterAccount, setFilterAccount] = useState('');
   const [quotaStats, setQuotaStats] = useState<any>(null);
   const [loadingQuota, setLoadingQuota] = useState(false);
-
-  // Realtime Quota từ Google API
-  const [quotaOverview, setQuotaOverview] = useState<QuotaOverviewResponse | null>(null);
-  const [loadingOverview, setLoadingOverview] = useState(false);
 
   // Manual token modal
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
@@ -118,52 +81,10 @@ export const AccountsTab: React.FC = () => {
     }
   };
 
-  const fetchRealtimeQuota = async (force: boolean = false) => {
-    if (!isAdmin) return;
-    try {
-      setLoadingOverview(true);
-      const res = await accountService.getQuotaOverview(force);
-      setQuotaOverview(res);
-      if (force) {
-        showToast('Đã cập nhật hạn ngạch Google Antigravity mới nhất!', 'success');
-      }
-    } catch (err: any) {
-      if (force) {
-        showToast(err.message || 'Lỗi cập nhật hạn ngạch Google', 'error');
-      }
-    } finally {
-      setLoadingOverview(false);
-    }
-  };
-
-  const formatResetTime = (isoString?: string | null) => {
-    if (!isoString) return null;
-    try {
-      const d = new Date(isoString);
-      const now = new Date();
-      const diffMs = d.getTime() - now.getTime();
-      const diffMin = Math.round(diffMs / 60000);
-      if (diffMin <= 0) return 'Đang reset...';
-      if (diffMin < 60) return `Reset sau ~${diffMin}p`;
-      const hours = Math.floor(diffMin / 60);
-      const mins = diffMin % 60;
-      return `Reset sau ~${hours}h${mins > 0 ? ` ${mins}p` : ''}`;
-    } catch {
-      return isoString;
-    }
-  };
-
-  const getQuotaColor = (usedPercent: number) => {
-    if (usedPercent >= 90) return { bar: 'bg-red-500', text: 'text-red-400', border: 'border-red-500/30', bg: 'bg-red-500/10' };
-    if (usedPercent >= 70) return { bar: 'bg-amber-500', text: 'text-amber-400', border: 'border-amber-500/30', bg: 'bg-amber-500/10' };
-    return { bar: 'bg-emerald-500', text: 'text-emerald-400', border: 'border-emerald-500/30', bg: 'bg-emerald-500/10' };
-  };
-
   useEffect(() => {
     fetchAccounts();
     if (isAdmin) {
       fetchQuotaStats();
-      fetchRealtimeQuota();
       fetchSettings();
     }
   }, [isAdmin]);
@@ -303,7 +224,7 @@ export const AccountsTab: React.FC = () => {
             <CheckCircle className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="text-2xl font-bold text-emerald-400">{readyCount}</div>
-          <p className="text-xs text-slate-500 mt-1">Đang hoạt động & còn quota</p>
+          <p className="text-xs text-slate-500 mt-1">Đang hoạt động</p>
         </div>
 
         {/* Rate Limited */}
@@ -488,138 +409,6 @@ export const AccountsTab: React.FC = () => {
         </div>
       </div>
 
-      {/* 2.5. Tổng Hạn Ngạch Google AI Toàn Hệ Thống (Aggregated Live Quota) */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center space-x-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 text-indigo-400 flex items-center justify-center shadow-sm">
-              <Gauge className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h3 className="font-bold text-base text-white">Tổng Hạn Ngạch Google AI Toàn Hệ Thống</h3>
-                <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center space-x-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                  <span>Live Quota</span>
-                </span>
-              </div>
-              <p className="text-xs text-slate-400">
-                Tỷ lệ % hạn ngạch đã dùng và dung lượng khả dụng thời gian thực từ Google Cloud Code API
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => fetchRealtimeQuota(true)}
-              disabled={loadingOverview}
-              className="px-3.5 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded-xl text-xs font-medium transition flex items-center space-x-1.5 disabled:opacity-50"
-              title="Quét và cập nhật hạn ngạch tất cả tài khoản"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loadingOverview ? 'animate-spin text-indigo-400' : ''}`} />
-              <span>{loadingOverview ? 'Đang quét...' : 'Làm mới Quota Realtime'}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* 2 Big Quota Progress Meters: Gemini & Claude */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Gemini Overall Meter */}
-          <div className="bg-slate-950/70 border border-slate-800/90 rounded-xl p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 rounded-lg bg-sky-500/10 text-sky-400 flex items-center justify-center border border-sky-500/20">
-                  <Sparkles className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-white flex items-center space-x-1.5">
-                    <span>Nhóm Gemini Models</span>
-                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 font-mono">Flash / Pro</span>
-                  </div>
-                  <div className="text-[11px] text-slate-400">Gemini 3.8 Flash, 3.1 Pro, 2.5 Pro</div>
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-[11px] font-semibold text-slate-400">Đã sử dụng</div>
-                <div className="text-xl font-bold font-mono text-sky-400">
-                  {quotaOverview?.summary?.gemini?.avg_used_percent ?? 0}%
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="w-full bg-slate-800/80 rounded-full h-3 overflow-hidden p-0.5 border border-slate-700/50">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-sky-500 to-blue-500 transition-all duration-500"
-                  style={{ width: `${Math.min(100, Math.max(0, quotaOverview?.summary?.gemini?.avg_used_percent ?? 0))}%` }}
-                />
-              </div>
-              <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
-                <span>Còn lại: <strong className="text-emerald-400">{quotaOverview?.summary?.gemini?.avg_remaining_percent ?? 100}%</strong></span>
-                <span className="text-slate-500">Trung bình {accounts.length} tài khoản</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Claude Overall Meter */}
-          <div className="bg-slate-950/70 border border-slate-800/90 rounded-xl p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center border border-purple-500/20">
-                  <Cpu className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-white flex items-center space-x-1.5">
-                    <span>Nhóm Claude Models</span>
-                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 font-mono">Sonnet / Opus</span>
-                  </div>
-                  <div className="text-[11px] text-slate-400">Claude Sonnet 4.6 Thinking, Opus 4.6</div>
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-[11px] font-semibold text-slate-400">Đã sử dụng</div>
-                <div className="text-xl font-bold font-mono text-purple-400">
-                  {quotaOverview?.summary?.claude?.avg_used_percent ?? 0}%
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="w-full bg-slate-800/80 rounded-full h-3 overflow-hidden p-0.5 border border-slate-700/50">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-500"
-                  style={{ width: `${Math.min(100, Math.max(0, quotaOverview?.summary?.claude?.avg_used_percent ?? 0))}%` }}
-                />
-              </div>
-              <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
-                <span>Còn lại: <strong className="text-emerald-400">{quotaOverview?.summary?.claude?.avg_remaining_percent ?? 100}%</strong></span>
-                <span className="text-slate-500">Trung bình {accounts.length} tài khoản</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Status badges */}
-        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/60 text-xs">
-          <div className="px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 flex items-center space-x-1.5 text-slate-300">
-            <span className="text-slate-500">Tổng tài khoản:</span>
-            <span className="font-bold text-white font-mono">{accounts.length}</span>
-          </div>
-          <div className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center space-x-1.5 text-emerald-400">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-            <span>Khỏe mạnh:</span>
-            <span className="font-bold font-mono">{quotaOverview?.healthy_count ?? accounts.filter(a => a.is_active).length}</span>
-          </div>
-          {(quotaOverview?.exhausted_count || 0) > 0 && (
-            <div className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center space-x-1.5 text-amber-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-              <span>Cạn quota / 429:</span>
-              <span className="font-bold font-mono">{quotaOverview?.exhausted_count}</span>
-            </div>
-          )}
-        </div>
-      </div>
-
       {/* 3. Action Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/40 p-4 border border-slate-800 rounded-2xl">
         <div>
@@ -712,105 +501,6 @@ export const AccountsTab: React.FC = () => {
                   )}
                 </div>
 
-                {/* Google Real-time Quota Bars per Account */}
-                {(() => {
-                  const accQuotaRealtime = quotaOverview?.accounts?.[a.id];
-                  const geminiInfo = accQuotaRealtime?.gemini || { used_percent: 0, remaining_percent: 100 };
-                  const claudeInfo = accQuotaRealtime?.claude || { used_percent: 0, remaining_percent: 100 };
-                  const gColor = getQuotaColor(geminiInfo.used_percent);
-                  const cColor = getQuotaColor(claudeInfo.used_percent);
-
-                  return (
-                    <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800/90 space-y-2.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-slate-300 flex items-center space-x-1.5">
-                          <Gauge className="w-3.5 h-3.5 text-blue-400" />
-                          <span>Hạn ngạch Google AI</span>
-                        </span>
-                        {accQuotaRealtime?.status === 'rate_limited' ? (
-                          <span className="text-[10px] font-semibold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
-                            Hết Quota 429
-                          </span>
-                        ) : accQuotaRealtime?.status === 'error' ? (
-                          <span className="text-[10px] text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20">
-                            Có lỗi
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-slate-500 flex items-center space-x-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                            <span>Live Quota</span>
-                          </span>
-                        )}
-                      </div>
-
-                      {accQuotaRealtime?.status === 'error' && (
-                        <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-2.5 py-2 text-[11px] leading-relaxed text-red-300 break-words">
-                          <span className="font-semibold text-red-200">Nguyên nhân: </span>
-                          {formatQuotaError(accQuotaRealtime.error)}
-                        </div>
-                      )}
-
-                      {/* Gemini Quota Bar */}
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="text-slate-300 flex items-center space-x-1">
-                            <Sparkles className="w-3 h-3 text-sky-400" />
-                            <span className="font-medium">Gemini:</span>
-                          </span>
-                          <div className="flex items-center space-x-1.5 font-mono text-[11px]">
-                            <span className={`font-semibold ${gColor.text}`}>
-                              Đã dùng {geminiInfo.used_percent}%
-                            </span>
-                            <span className="text-slate-500">
-                              (Còn {geminiInfo.remaining_percent}%)
-                            </span>
-                          </div>
-                        </div>
-                        <div className="w-full bg-slate-800/80 rounded-full h-2 overflow-hidden">
-                          <div
-                            className={`h-full transition-all duration-500 ${gColor.bar}`}
-                            style={{ width: `${Math.min(100, Math.max(0, geminiInfo.used_percent))}%` }}
-                          />
-                        </div>
-                        {geminiInfo.reset_time && (
-                          <div className="text-[10px] text-slate-500 text-right font-mono">
-                            {formatResetTime(geminiInfo.reset_time)}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Claude Quota Bar */}
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="text-slate-300 flex items-center space-x-1">
-                            <Cpu className="w-3 h-3 text-purple-400" />
-                            <span className="font-medium">Claude:</span>
-                          </span>
-                          <div className="flex items-center space-x-1.5 font-mono text-[11px]">
-                            <span className={`font-semibold ${cColor.text}`}>
-                              Đã dùng {claudeInfo.used_percent}%
-                            </span>
-                            <span className="text-slate-500">
-                              (Còn {claudeInfo.remaining_percent}%)
-                            </span>
-                          </div>
-                        </div>
-                        <div className="w-full bg-slate-800/80 rounded-full h-2 overflow-hidden">
-                          <div
-                            className={`h-full transition-all duration-500 ${cColor.bar}`}
-                            style={{ width: `${Math.min(100, Math.max(0, claudeInfo.used_percent))}%` }}
-                          />
-                        </div>
-                        {claudeInfo.reset_time && (
-                          <div className="text-[10px] text-slate-500 text-right font-mono">
-                            {formatResetTime(claudeInfo.reset_time)}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })()}
-
                 {/* Quota Metrics Container per Account */}
                 <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800/80 space-y-2 font-mono text-xs">
                   <div className="flex items-center justify-between text-slate-400">
@@ -862,10 +552,10 @@ export const AccountsTab: React.FC = () => {
                       <Power className="w-3.5 h-3.5" />
                     </button>
 
-                    <button
+                      <button
                       onClick={() => handleTest(a.id)}
                       className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition"
-                      title="Kiểm tra kết nối và quota"
+                        title="Kiểm tra kết nối"
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
                     </button>

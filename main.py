@@ -40,7 +40,6 @@ from session_manager import session_manager, normalize_messages_for_antigravity,
 from gateway_protocol import GatewayProtocolError, PROTOCOL_VERSION
 import image_generator
 import file_processor
-import quota_fetcher
 from momo_payment import momo_service, TOKEN_PACKAGES
 
 
@@ -1674,20 +1673,6 @@ def delete_session_api(session_id: str):
 @app.get("/api/accounts")
 def list_accounts(admin: Dict[str, Any] = Depends(verify_admin_access)):
     return account_manager.get_accounts_public()
-
-@app.get("/api/accounts/quota-overview")
-def get_accounts_quota_overview(force_refresh: bool = False, admin: Dict[str, Any] = Depends(verify_admin_access)):
-    """Lấy tổng hợp hạn ngạch (% đã dùng, % còn lại) thực tế từ Google Antigravity cho toàn bộ tài khoản"""
-    accounts = account_manager.load_accounts()
-    return quota_fetcher.fetch_all_accounts_quota(accounts, force_refresh=force_refresh)
-
-@app.get("/api/accounts/{account_id}/quota")
-def get_account_quota_detail(account_id: str, force_refresh: bool = False, admin: Dict[str, Any] = Depends(verify_admin_access)):
-    """Lấy hạn ngạch chi tiết của một tài khoản Google cụ thể"""
-    acc = account_manager.get_account_by_id(account_id)
-    if not acc:
-        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản")
-    return quota_fetcher.fetch_account_quota(acc, force_refresh=force_refresh)
 
 @app.post("/api/accounts/oauth/start")
 def start_oauth_flow(admin: Dict[str, Any] = Depends(verify_admin_access)):

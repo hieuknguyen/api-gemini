@@ -1,6 +1,6 @@
 ﻿# Antigravity FastAPI Gateway
 
-Gateway AI hiệu năng cao viết bằng FastAPI kết nối trực tiếp Google Antigravity & Cloud Code API (hỗ trợ Claude 3.7 Sonnet, Gemini 3.8 Flash, 3.0 Flash, 2.5 Flash, Imagen 3, Web Search và Quota Tracking).
+Gateway AI hiệu năng cao viết bằng FastAPI kết nối trực tiếp Google Antigravity & Cloud Code API (hỗ trợ Claude 3.7 Sonnet, Gemini 3.8 Flash, 3.0 Flash, 2.5 Flash, Imagen 3, Web Search và thống kê request/token nội bộ).
 
 ---
 
@@ -84,5 +84,5 @@ Ví dụ gọi POST /webhook/antigravity-chat:
 1. **Typography chuẩn hóa:** Tự động đính kèm định dạng Markdown phong phú (In đậm, In nghiêng, Gạch chân <u>, Header #, Danh sách, Blockquote).
 2. **Sinh ảnh tự động (Imagen 3 & Pollinations):** Hỗ trợ image_generation: true hoặc prompt yêu cầu vẽ ảnh tả thực Photorealistic 8K.
 3. **Skill Custom:** Tự động gắn skill qua skill_id kèm theo request.
-4. **Multi-Account Failover & Quota Tracking:** Tự động chuyển tài khoản khi cạn quota, giám sát hạn ngạch qua SQLite quota.db.
+4. **Multi-Account Failover & Usage Tracking:** Tự động chuyển tài khoản khi gặp 429, ghi nhận request/token qua SQLite quota.db.
 "# api-gemini" 
