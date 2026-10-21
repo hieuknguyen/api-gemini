@@ -5,11 +5,11 @@ services:
     restart: unless-stopped
     environment:
       PYTHONUNBUFFERED: "1"
-      MYSQL_HOST: mysql_db
-      MYSQL_PORT: "3306"
-      MYSQL_USER: api_gemini_app
+      MYSQL_HOST: ${MYSQL_HOST:-mysql_db}
+      MYSQL_PORT: ${MYSQL_PORT:-3306}
+      MYSQL_USER: ${MYSQL_USER:-api_gemini_app}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
-      MYSQL_DATABASE: api_gemini_db
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-api_gemini_db}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       API_KEY: ${API_KEY:?Set API_KEY in .env}
@@ -24,6 +24,8 @@ services:
       - ./quota.db:/app/quota.db
     expose:
       - "5678"
+    ports:
+      - "127.0.0.1:5679:5678"
     networks:
       - alan
     labels:
