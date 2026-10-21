@@ -8,6 +8,7 @@ import urllib.parse
 import asyncio
 import threading
 import socket
+from html import escape
 from fastapi import FastAPI, Header, HTTPException, Depends, status, Request, Query
 from fastapi.responses import HTMLResponse, Response, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -21,6 +22,7 @@ import docx_exporter
 import config
 from models import (
     ChatRequest, ChatResponse, ManualAccountRequest, OAuthExchangeRequest, SettingsUpdateRequest,
+    GoogleOAuthSettingsUpdateRequest,
     SkillUpdateRequest, ImageGenerateRequest, ImageGenerateResponse,
     UserCreateRequest, UserUpdateRequest, ApiKeyCreateRequest, LoginRequest, RegisterRequest,
     ExportDocxRequest, ParseBlocksRequest, ReadFolderRequest, ReadFolderResponse,
@@ -65,6 +67,7 @@ def startup_event():
         import db
         db.run_migrations()
         logger.info("Đã đồng bộ và di chuyển dữ liệu vào MySQL thành công.")
+        config.reload_google_oauth_credentials()
 
         # Đảm bảo tài khoản Quản trị viên Tối cao và hạ quyền user khác an toàn
         user_manager.ensure_admin_account()
@@ -111,7 +114,8 @@ def get_favicon():
 def get_api_docs_markdown(request: Request, api_key: Optional[str] = None):
     """Tải về tài liệu đặc tả API đầy đủ nhất dạng Markdown (.md) cho AI Agents và Developers"""
     base_url = str(request.base_url).rstrip("/")
-    resolved_key = api_key or request.headers.get("X-API-Key") or config.API_KEY or "sk-antigravity-default"
+    # This route is public, so never embed the server's admin key in downloaded docs.
+    resolved_key = api_key or request.headers.get("X-API-Key") or "<YOUR_API_KEY>"
     md_content = api_docs_generator.generate_markdown_docs(base_url=base_url, api_key=resolved_key)
     return Response(
         content=md_content,
@@ -1687,10 +1691,39 @@ def get_account_quota_detail(account_id: str, force_refresh: bool = False, admin
 
 @app.post("/api/accounts/oauth/start")
 def start_oauth_flow(admin: Dict[str, Any] = Depends(verify_admin_access)):
+    if not config.CLIENT_ID or not config.CLIENT_SECRET:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Chưa cấu hình Google OAuth Client ID và Client Secret trong trang Cài đặt quản trị."
+        )
     try:
         return account_manager.start_oauth_flow()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/accounts/oauth/callback", response_class=HTMLResponse)
+def oauth_callback(
+    code: Optional[str] = Query(None),
+    state: Optional[str] = Query(None),
+    error: Optional[str] = Query(None),
+):
+    """Public HTTPS callback; the one-time OAuth state validates the response."""
+    try:
+        account = account_manager.complete_oauth_callback(code, state, error)
+        email = escape(str(account.get("email") or "Google"))
+        return HTMLResponse(
+            f"<html><head><meta charset='utf-8'><title>Google đã kết nối</title></head>"
+            f"<body style='font-family:sans-serif;background:#0f172a;color:#f8fafc;padding:3rem'>"
+            f"<h2>Đăng nhập thành công</h2><p>Đã thêm tài khoản {email}. Bạn có thể đóng trang này.</p></body></html>"
+        )
+    except Exception as e:
+        detail = escape(str(e))
+        return HTMLResponse(
+            f"<html><head><meta charset='utf-8'><title>Lỗi OAuth</title></head>"
+            f"<body style='font-family:sans-serif;background:#0f172a;color:#f8fafc;padding:3rem'>"
+            f"<h2>Không thể kết nối Google</h2><p>{detail}</p></body></html>",
+            status_code=400,
+        )
 
 @app.post("/api/accounts/manual")
 def add_account_manual(req: ManualAccountRequest, admin: Dict[str, Any] = Depends(verify_admin_access)):
@@ -1811,8 +1844,52 @@ def get_settings(admin: Dict[str, Any] = Depends(verify_admin_access)):
         "status": "ok",
         "api_key": current_key,
         "strategy": account_manager.strategy,
-        "default_model": config.DEFAULT_MODEL
+        "default_model": config.DEFAULT_MODEL,
+        "google_oauth_client_id": config.CLIENT_ID,
+        "google_oauth_secret_configured": bool(config.CLIENT_SECRET),
     }
+
+@app.post("/api/settings/google-oauth")
+def update_google_oauth_settings(
+    req: GoogleOAuthSettingsUpdateRequest,
+    admin: Dict[str, Any] = Depends(verify_admin_access),
+):
+    client_id = req.client_id.strip()
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Google OAuth Client ID không được để trống.")
+
+    supplied_secret = (req.client_secret or "").strip()
+    if supplied_secret:
+        client_secret = supplied_secret
+    elif client_id == config.CLIENT_ID and config.CLIENT_SECRET:
+        client_secret = config.CLIENT_SECRET
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Cần nhập Client Secret cho Client ID mới; để trống chỉ khi giữ nguyên Client ID hiện tại.",
+        )
+
+    try:
+        config.save_google_oauth_credentials(client_id, client_secret)
+    except Exception as e:
+        logger.error(f"Không thể lưu Google OAuth credentials: {e}")
+        raise HTTPException(status_code=500, detail="Không thể lưu cấu hình Google OAuth vào database.")
+
+    return {
+        "status": "ok",
+        "google_oauth_client_id": config.CLIENT_ID,
+        "google_oauth_secret_configured": bool(config.CLIENT_SECRET),
+    }
+
+@app.delete("/api/settings/google-oauth")
+def delete_google_oauth_settings(admin: Dict[str, Any] = Depends(verify_admin_access)):
+    try:
+        config.save_google_oauth_credentials("", "")
+    except Exception as e:
+        logger.error(f"Không thể xóa Google OAuth credentials: {e}")
+        raise HTTPException(status_code=500, detail="Không thể xóa cấu hình Google OAuth khỏi database.")
+
+    return {"status": "ok", "google_oauth_client_id": "", "google_oauth_secret_configured": False}
 
 @app.post("/api/settings/generate-key")
 def generate_random_api_key_endpoint(admin: Dict[str, Any] = Depends(verify_admin_access)):

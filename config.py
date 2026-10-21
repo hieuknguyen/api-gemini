@@ -11,6 +11,8 @@ load_dotenv(BASE_DIR / ".env")
 SETTINGS_FILE = BASE_DIR / "settings.json"
 ACCOUNTS_FILE = BASE_DIR / "accounts.json"
 TEMPLATES_DIR = BASE_DIR / "templates"
+GOOGLE_OAUTH_CLIENT_ID_SETTING = "google_oauth_client_id"
+GOOGLE_OAUTH_CLIENT_SECRET_SETTING = "google_oauth_client_secret"
 
 # MySQL Configuration
 MYSQL_HOST = os.getenv("MYSQL_HOST", "127.0.0.1")
@@ -69,6 +71,34 @@ def save_persisted_settings(data: dict):
     except Exception as e:
         print(f"Error saving settings.json backup: {e}")
 
+def save_google_oauth_credentials(client_id: str, client_secret: str):
+    """Store OAuth credentials in MySQL only; never write secrets to settings.json."""
+    import db
+    now = time.time()
+    for key, value in (
+        (GOOGLE_OAUTH_CLIENT_ID_SETTING, client_id),
+        (GOOGLE_OAUTH_CLIENT_SECRET_SETTING, client_secret),
+    ):
+        db.execute(
+            """
+            INSERT INTO settings (setting_key, setting_value, updated_at)
+            VALUES (%s, %s, %s)
+            ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_at=VALUES(updated_at)
+            """,
+            (key, json.dumps(value), now),
+        )
+
+    # Remove any legacy copy from the JSON backup if one exists.
+    try:
+        current = json.loads(SETTINGS_FILE.read_text(encoding="utf-8")) if SETTINGS_FILE.exists() else {}
+        current.pop(GOOGLE_OAUTH_CLIENT_ID_SETTING, None)
+        current.pop(GOOGLE_OAUTH_CLIENT_SECRET_SETTING, None)
+        SETTINGS_FILE.write_text(json.dumps(current, indent=2, ensure_ascii=False), encoding="utf-8")
+    except Exception as e:
+        print(f"Error cleaning OAuth credentials from settings.json backup: {e}")
+
+    reload_google_oauth_credentials()
+
 def update_env_file(key: str, value: str):
     env_path = BASE_DIR / ".env"
     if not env_path.exists():
@@ -103,8 +133,17 @@ if "api_key" in _persisted and _persisted["api_key"]:
 else:
     API_KEY = os.getenv("API_KEY", "")
 
-CLIENT_ID = os.getenv("CLIENT_ID", "")
-CLIENT_SECRET = os.getenv("CLIENT_SECRET", "")
+OAUTH_REDIRECT_URI = os.getenv("OAUTH_REDIRECT_URI", "").strip()
+
+CLIENT_ID = str(_persisted.get(GOOGLE_OAUTH_CLIENT_ID_SETTING, "") or "")
+CLIENT_SECRET = str(_persisted.get(GOOGLE_OAUTH_CLIENT_SECRET_SETTING, "") or "")
+
+def reload_google_oauth_credentials():
+    """Refresh in-memory OAuth credentials from persistent admin settings."""
+    global CLIENT_ID, CLIENT_SECRET
+    persisted = get_persisted_settings()
+    CLIENT_ID = str(persisted.get(GOOGLE_OAUTH_CLIENT_ID_SETTING, "") or "")
+    CLIENT_SECRET = str(persisted.get(GOOGLE_OAUTH_CLIENT_SECRET_SETTING, "") or "")
 
 if "default_model" in _persisted and _persisted["default_model"]:
     DEFAULT_MODEL = _persisted["default_model"]

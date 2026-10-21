@@ -6,6 +6,7 @@ import threading
 import logging
 import urllib.parse
 import http.server
+import secrets
 from typing import List, Dict, Any, Optional, Tuple
 import requests
 import config
@@ -338,6 +339,9 @@ class AccountManager:
         return config.ANTIGRAVITY_PROJECT_ID
 
     def add_or_update_account(self, refresh_token: str, custom_name: Optional[str] = None) -> Dict[str, Any]:
+        if not config.CLIENT_ID or not config.CLIENT_SECRET:
+            raise ValueError("Chưa cấu hình Google OAuth Client ID và Client Secret trong trang Cài đặt quản trị.")
+
         token_res = requests.post(
             "https://oauth2.googleapis.com/token",
             data={
@@ -460,6 +464,9 @@ class AccountManager:
 
     def exchange_oauth_code(self, code: str, redirect_uri: str, custom_name: Optional[str] = None) -> Dict[str, Any]:
         """Đổi Authorization Code lấy Refresh Token từ máy chủ Google OAuth"""
+        if not config.CLIENT_ID or not config.CLIENT_SECRET:
+            raise ValueError("Chưa cấu hình Google OAuth Client ID và Client Secret trong trang Cài đặt quản trị.")
+
         code = urllib.parse.unquote(code.strip())
         t_res = requests.post(
             "https://oauth2.googleapis.com/token",
@@ -482,6 +489,29 @@ class AccountManager:
 
         return self.add_or_update_account(refresh_token, custom_name)
 
+    def complete_oauth_callback(
+        self,
+        code: Optional[str],
+        state: Optional[str],
+        error: Optional[str] = None,
+        custom_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Validate and consume the one-time state for an OAuth callback."""
+        with self.lock:
+            pending = dict(self.oauth_state)
+            if not pending or not state or not secrets.compare_digest(str(pending.get("state", "")), state):
+                raise ValueError("Trạng thái OAuth không hợp lệ hoặc đã được sử dụng. Hãy bắt đầu lại.")
+            if time.time() - float(pending.get("created_at", 0)) > 600:
+                self.oauth_state = {}
+                raise ValueError("Yêu cầu OAuth đã hết hạn. Hãy bắt đầu lại.")
+            self.oauth_state = {}
+
+        if error:
+            raise ValueError(f"Google từ chối ủy quyền: {error}")
+        if not code:
+            raise ValueError("Google không trả về mã xác thực.")
+        return self.exchange_oauth_code(code, pending["redirect_uri"], custom_name)
+
     def _stop_oauth_listener_if_running(self):
         """Dừng server listener cục bộ nếu đang chạy ngầm khi đã xác thực xong"""
         try:
@@ -494,33 +524,52 @@ class AccountManager:
             pass
 
     def start_oauth_flow(self, host: str = "0.0.0.0") -> Dict[str, Any]:
-        # Clean up any previous oauth server if still active
-        self._stop_oauth_listener_if_running()
-        time.sleep(0.15)
+        if not config.CLIENT_ID or not config.CLIENT_SECRET:
+            raise ValueError("Chưa cấu hình Google OAuth Client ID và Client Secret trong trang Cài đặt quản trị.")
 
         selected_port = None
-        for port in config.OAUTH_PORTS:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(0.5)
-                if s.connect_ex(("127.0.0.1", port)) != 0:
-                    selected_port = port
-                    break
+        if config.OAUTH_REDIRECT_URI:
+            redirect_uri = config.OAUTH_REDIRECT_URI
+        else:
+            # Local development fallback; production should set OAUTH_REDIRECT_URI.
+            self._stop_oauth_listener_if_running()
+            time.sleep(0.15)
+            for port in config.OAUTH_PORTS:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.settimeout(0.5)
+                    if s.connect_ex(("127.0.0.1", port)) != 0:
+                        selected_port = port
+                        break
+            if not selected_port:
+                selected_port = config.OAUTH_PORTS[0]
+            redirect_uri = f"http://localhost:{selected_port}/oauth-callback"
 
-        if not selected_port:
-            selected_port = config.OAUTH_PORTS[0]
-
-        redirect_uri = f"http://localhost:{selected_port}/oauth-callback"
         self.last_selected_port = selected_port
         self.last_redirect_uri = redirect_uri
+        state = secrets.token_urlsafe(32)
+        self.oauth_state = {
+            "state": state,
+            "redirect_uri": redirect_uri,
+            "created_at": time.time(),
+        }
         auth_params = {
             "client_id": config.CLIENT_ID,
             "redirect_uri": redirect_uri,
             "response_type": "code",
             "scope": " ".join(config.OAUTH_SCOPES),
             "access_type": "offline",
-            "prompt": "consent"
+            "prompt": "consent",
+            "state": state,
         }
         auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urllib.parse.urlencode(auth_params)}"
+
+        if config.OAUTH_REDIRECT_URI:
+            return {
+                "url": auth_url,
+                "auth_url": auth_url,
+                "port": None,
+                "redirect_uri": redirect_uri,
+            }
 
         manager = self
         stop_event = threading.Event()
@@ -538,43 +587,17 @@ class AccountManager:
                     qs = urllib.parse.parse_qs(parsed.query)
                     code = qs.get("code", [None])[0]
                     error = qs.get("error", [None])[0]
-
-                    if code:
-                        try:
-                            t_res = requests.post(
-                                "https://oauth2.googleapis.com/token",
-                                data={
-                                    "grant_type": "authorization_code",
-                                    "code": code,
-                                    "redirect_uri": redirect_uri,
-                                    "client_id": config.CLIENT_ID,
-                                    "client_secret": config.CLIENT_SECRET,
-                                },
-                                timeout=15
-                            )
-                            if t_res.status_code == 200:
-                                t_data = t_res.json()
-                                refresh_token = t_data.get("refresh_token")
-                                if refresh_token:
-                                    manager.add_or_update_account(refresh_token)
-                                    self._send_html("Đăng nhập thành công!", "Tài khoản Google Antigravity đã được thêm vào hệ thống. Bạn có thể đóng cửa sổ này.")
-                                    stop_event.set()
-                                    return
-                                else:
-                                    self._send_html("Cảnh báo", "Không nhận được refresh_token từ Google. Hãy thử lại với prompt=consent.", is_error=True)
-                                    stop_event.set()
-                                    return
-                            else:
-                                self._send_html("Lỗi xác thực", f"Google trả về lỗi {t_res.status_code}: {t_res.text}", is_error=True)
-                                stop_event.set()
-                                return
-                        except Exception as ex:
-                            self._send_html("Lỗi", f"Xảy ra lỗi xử lý token: {ex}", is_error=True)
-                            stop_event.set()
-                            return
-
-                    self._send_html("Lỗi ủy quyền", f"Google từ chối ủy quyền: {error}", is_error=True)
-                    stop_event.set()
+                    callback_state = qs.get("state", [None])[0]
+                    try:
+                        account = manager.complete_oauth_callback(code, callback_state, error)
+                        self._send_html(
+                            "Đăng nhập thành công!",
+                            f"Đã thêm tài khoản {account.get('email', 'Google')} vào hệ thống. Bạn có thể đóng cửa sổ này.",
+                        )
+                    except Exception as ex:
+                        self._send_html("Lỗi xác thực", str(ex), is_error=True)
+                    finally:
+                        stop_event.set()
                 else:
                     self.send_response(404)
                     self.end_headers()

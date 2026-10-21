@@ -12,6 +12,7 @@ import time
 import uuid
 import logging
 import hashlib
+import os
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 
@@ -290,12 +291,14 @@ class UserManager:
 
     def ensure_admin_account(self):
         """
-        Đảm bảo tài khoản nguyentrunghieu4390@gmail.com luôn là Admin với mật khẩu nguyentrunghieu4390@gmail.com.
-        Chuyển toàn quyền quản trị về tài khoản này và khởi tạo API Key hoạt động.
-        Đồng thời hạ quyền các tài khoản khác (như usr_d4f84f97) xuống 'user' mà không làm mất key hay gián đoạn webhook.
+        Đảm bảo tài khoản Admin được cấu hình qua ADMIN_EMAIL và ADMIN_PASSWORD.
         """
-        target_email = "nguyentrunghieu4390@gmail.com"
-        target_pass = "nguyentrunghieu4390@gmail.com"
+        target_email = os.getenv("ADMIN_EMAIL", "").strip().lower()
+        target_pass = os.getenv("ADMIN_PASSWORD", "").strip()
+        if not target_email or len(target_pass) < 20:
+            logger.error("Cần đặt ADMIN_EMAIL và ADMIN_PASSWORD (ít nhất 20 ký tự) để khởi tạo tài khoản Admin.")
+            return
+
         try:
             users = self.get_users()
             admin_user = None
@@ -308,16 +311,17 @@ class UserManager:
                 admin_id = admin_user["id"]
                 updates = {
                     "role": "admin",
-                    "password": target_pass,
                     "is_active": True
                 }
+                if not admin_user.get("password"):
+                    updates["password"] = target_pass
                 self.update_user(admin_id, updates)
             else:
                 new_admin = self.create_user(
-                    name="Nguyễn Trung Hiếu",
+                    name=os.getenv("ADMIN_NAME", "API Gemini Admin"),
                     email=target_email,
                     password=target_pass,
-                    note="Tài khoản Quản trị viên Tối cao (Admin)",
+                    note="API Gemini administrator",
                     role="admin"
                 )
                 admin_id = new_admin["id"]
@@ -327,7 +331,7 @@ class UserManager:
             active_keys = [k for k in keys if k.get("is_active", True)]
             target_key = config.API_KEY or config.generate_random_api_key()
             if not active_keys:
-                self.create_api_key(admin_id, name="Admin Key - Nguyễn Trung Hiếu", custom_key=target_key)
+                self.create_api_key(admin_id, name="Admin API Key", custom_key=target_key)
             else:
                 config.API_KEY = active_keys[0]["key_value"]
 

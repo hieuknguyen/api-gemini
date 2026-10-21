@@ -17,5 +17,18 @@ export const settingsService = {
     return apiRequest<{ api_key: string }>('/api/settings/generate-key', {
       method: 'POST',
     });
-  }
+  },
+
+  async saveGoogleOAuth(client_id: string, client_secret?: string): Promise<SystemSettings> {
+    return apiRequest<SystemSettings>('/api/settings/google-oauth', {
+      method: 'POST',
+      body: JSON.stringify({ client_id, client_secret }),
+    });
+  },
+
+  async deleteGoogleOAuth(): Promise<void> {
+    return apiRequest<void>('/api/settings/google-oauth', {
+      method: 'DELETE',
+    });
+  },
 };

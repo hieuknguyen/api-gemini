@@ -219,6 +219,8 @@ export interface SystemSettings {
   strategy?: string;
   default_model?: string;
   api_key?: string;
+  google_oauth_client_id?: string;
+  google_oauth_secret_configured?: boolean;
   temperature?: number;
   max_tokens?: number;
 }

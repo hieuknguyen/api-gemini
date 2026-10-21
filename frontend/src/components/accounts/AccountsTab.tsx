@@ -883,10 +883,10 @@ export const AccountsTab: React.FC = () => {
               </div>
               <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-300 pl-1">
                 <li>
-                  <strong className="text-white">Đường link Callback:</strong> Khi cửa sổ đăng nhập hiện lỗi <em className="text-amber-300 not-italic">"can't reach this page" / "localhost refused to connect"</em>, bạn chỉ cần copy toàn bộ đường link trên thanh địa chỉ (ví dụ: <code className="text-blue-400 font-mono">http://localhost:51122/oauth-callback?code=...</code>) và dán vào đây.
+                  <strong className="text-white">Đăng nhập tự động:</strong> Sau khi cấp quyền, Google quay về domain của ứng dụng và tài khoản sẽ được thêm tự động.
                 </li>
                 <li>
-                  <strong className="text-white">Mã ủy quyền (Auth Code):</strong> Dán mã bắt đầu bằng <code className="text-blue-400 font-mono">4/0A...</code>
+                  <strong className="text-white">Mã ủy quyền (Auth Code):</strong> Dán mã bắt đầu bằng <code className="text-blue-400 font-mono">4/0A...</code> nếu bạn dùng luồng thủ công.
                 </li>
                 <li>
                   <strong className="text-white">Refresh Token:</strong> Dán mã bắt đầu bằng <code className="text-blue-400 font-mono">1//04...</code>
@@ -917,7 +917,7 @@ export const AccountsTab: React.FC = () => {
                   required
                   value={manualToken}
                   onChange={(e) => setManualToken(e.target.value)}
-                  placeholder="Dán đường link (http://localhost:51122/oauth-callback?code=...), hoặc mã 4/0A..., hoặc Refresh Token 1//04... vào đây"
+                  placeholder="Dán URL callback, Auth Code 4/0A..., hoặc Refresh Token 1//04... vào đây"
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 font-mono focus:outline-none focus:border-blue-500 resize-none"
                 />
               </div>

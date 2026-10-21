@@ -85,6 +85,10 @@ class SettingsUpdateRequest(BaseModel):
     default_model: Optional[str] = None
     strategy: Optional[str] = None
 
+class GoogleOAuthSettingsUpdateRequest(BaseModel):
+    client_id: str = Field(..., description="Google OAuth Client ID")
+    client_secret: Optional[str] = Field(None, description="Google OAuth Client Secret; omit to keep the current secret")
+
 class SkillCreateRequest(BaseModel):
     name: str = Field(..., description="Tên của Skill")
     system_prompt: str = Field(..., description="Chỉ dẫn hệ thống cho AI")

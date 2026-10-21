@@ -19,7 +19,8 @@ import {
   Globe,
   History,
   Lock,
-  CheckCircle2
+  CheckCircle2,
+  Trash2
 } from 'lucide-react';
 
 const STRATEGIES = [
@@ -40,6 +41,11 @@ export const SettingsTab: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [generatingKey, setGeneratingKey] = useState(false);
+  const [googleOAuthClientId, setGoogleOAuthClientId] = useState('');
+  const [googleOAuthClientSecret, setGoogleOAuthClientSecret] = useState('');
+  const [googleOAuthSecretConfigured, setGoogleOAuthSecretConfigured] = useState(false);
+  const [savingGoogleOAuth, setSavingGoogleOAuth] = useState(false);
+  const [deletingGoogleOAuth, setDeletingGoogleOAuth] = useState(false);
 
   // MoMo Config state
   const [momoPartnerCode, setMomoPartnerCode] = useState('');
@@ -70,6 +76,8 @@ export const SettingsTab: React.FC = () => {
       if (data.strategy) setStrategy(data.strategy);
       if (data.default_model) setDefaultModel(data.default_model);
       if (data.api_key) setApiKey(data.api_key);
+      setGoogleOAuthClientId(data.google_oauth_client_id || '');
+      setGoogleOAuthSecretConfigured(Boolean(data.google_oauth_secret_configured));
     } catch (err: any) {
       showToast(err.message || 'Lỗi tải cấu hình hệ thống', 'error');
     } finally {
@@ -157,6 +165,41 @@ export const SettingsTab: React.FC = () => {
       showToast(err.message || 'Lỗi tạo key', 'error');
     } finally {
       setGeneratingKey(false);
+    }
+  };
+
+  const handleSaveGoogleOAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingGoogleOAuth(true);
+    try {
+      const result = await settingsService.saveGoogleOAuth(
+        googleOAuthClientId.trim(),
+        googleOAuthClientSecret.trim() || undefined,
+      );
+      setGoogleOAuthClientId(result.google_oauth_client_id || googleOAuthClientId.trim());
+      setGoogleOAuthSecretConfigured(Boolean(result.google_oauth_secret_configured));
+      setGoogleOAuthClientSecret('');
+      showToast('Đã lưu cấu hình Google OAuth vào database.', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Lỗi lưu cấu hình Google OAuth', 'error');
+    } finally {
+      setSavingGoogleOAuth(false);
+    }
+  };
+
+  const handleDeleteGoogleOAuth = async () => {
+    if (!window.confirm('Xóa Client ID và Client Secret Google OAuth khỏi hệ thống?')) return;
+    setDeletingGoogleOAuth(true);
+    try {
+      await settingsService.deleteGoogleOAuth();
+      setGoogleOAuthClientId('');
+      setGoogleOAuthClientSecret('');
+      setGoogleOAuthSecretConfigured(false);
+      showToast('Đã xóa cấu hình Google OAuth.', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Lỗi xóa cấu hình Google OAuth', 'error');
+    } finally {
+      setDeletingGoogleOAuth(false);
     }
   };
 
@@ -278,6 +321,75 @@ export const SettingsTab: React.FC = () => {
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 <span>{saving ? 'Đang lưu...' : 'Lưu Thay Đổi Cấu Hình Gateway'}</span>
               </button>
+            </div>
+          </form>
+
+          {/* Google OAuth credentials are stored in MySQL and managed by admins. */}
+          <form onSubmit={handleSaveGoogleOAuth} className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 space-y-5 shadow-xl text-xs">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+              <div className="flex items-center space-x-2">
+                <Key className="w-5 h-5 text-blue-400" />
+                <div>
+                  <h3 className="text-sm font-bold text-white">Google OAuth</h3>
+                  <p className="text-[11px] text-slate-400 mt-1">Lưu Client ID và Client Secret trong database để dùng cho đăng nhập Google.</p>
+                </div>
+              </div>
+              <span className={`px-2 py-1 rounded-full text-[10px] font-semibold border ${googleOAuthSecretConfigured ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-300'}`}>
+                {googleOAuthSecretConfigured ? 'Đã cấu hình' : 'Chưa cấu hình'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-slate-300 font-medium">Client ID:</label>
+                <input
+                  type="text"
+                  value={googleOAuthClientId}
+                  onChange={(e) => setGoogleOAuthClientId(e.target.value)}
+                  placeholder="...apps.googleusercontent.com"
+                  autoComplete="off"
+                  required
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-xl px-3.5 py-2.5 text-slate-100 font-mono text-xs focus:outline-none"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-slate-300 font-medium flex items-center justify-between">
+                  <span>Client Secret:</span>
+                  <span className="text-[10px] text-slate-500 font-normal">Không hiển thị lại sau khi lưu</span>
+                </label>
+                <input
+                  type="password"
+                  value={googleOAuthClientSecret}
+                  onChange={(e) => setGoogleOAuthClientSecret(e.target.value)}
+                  placeholder={googleOAuthSecretConfigured ? 'Đã lưu — để trống để giữ nguyên' : 'Nhập Client Secret'}
+                  autoComplete="new-password"
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-xl px-3.5 py-2.5 text-slate-100 font-mono text-xs focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-[11px] text-slate-500">Client Secret được giữ kín; để trống khi lưu nếu muốn giữ secret hiện tại.</p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleDeleteGoogleOAuth}
+                  disabled={deletingGoogleOAuth || (!googleOAuthClientId && !googleOAuthSecretConfigured)}
+                  className="px-4 py-2.5 bg-rose-600/15 hover:bg-rose-600/25 border border-rose-500/30 text-rose-300 rounded-xl text-xs font-semibold transition disabled:opacity-40 flex items-center space-x-2"
+                >
+                  {deletingGoogleOAuth ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  <span>Xóa cấu hình</span>
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingGoogleOAuth}
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-600/20 transition disabled:opacity-50 flex items-center space-x-2"
+                >
+                  {savingGoogleOAuth ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  <span>{savingGoogleOAuth ? 'Đang lưu...' : 'Lưu Google OAuth'}</span>
+                </button>
+              </div>
             </div>
           </form>
 
