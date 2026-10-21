@@ -1,0 +1,11 @@
+.env
+accounts.json
+api_keys.json
+users.json
+settings.json
+quota.db
+__pycache__/
+*.py[cod]
+.graft-sync-backups/
+frontend/node_modules/
+frontend/dist/

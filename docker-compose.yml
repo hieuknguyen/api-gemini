@@ -1,0 +1,85 @@
+services:
+  antigravity-gateway:
+    build: .
+    container_name: antigravity-gateway
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+      - "51121-51126:51121-51126"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=antigravity
+      - MYSQL_PASSWORD=antigravity_secret
+      - MYSQL_DATABASE=antigravity_db
+    volumes:
+      - ./accounts.json:/app/accounts.json
+      - ./skills.json:/app/skills.json
+      - ./settings.json:/app/settings.json
+      - ./users.json:/app/users.json
+      - ./api_keys.json:/app/api_keys.json
+      - ./quota.db:/app/quota.db
+      - ./.env:/app/.env
+      - ./templates:/app/templates
+      - ./main.py:/app/main.py
+      - ./db.py:/app/db.py
+      - ./user_manager.py:/app/user_manager.py
+      - ./config.py:/app/config.py
+      - ./account_manager.py:/app/account_manager.py
+      - ./session_manager.py:/app/session_manager.py
+      - ./image_generator.py:/app/image_generator.py
+      - ./file_processor.py:/app/file_processor.py
+      - ./skill_manager.py:/app/skill_manager.py
+      - ./docx_exporter.py:/app/docx_exporter.py
+      - ./api_docs_generator.py:/app/api_docs_generator.py
+      - ./models.py:/app/models.py
+      - ./client.py:/app/client.py
+      - ./response_parser.py:/app/response_parser.py
+      - ./dual_ai_orchestrator.py:/app/dual_ai_orchestrator.py
+      - ./quota_fetcher.py:/app/quota_fetcher.py
+      - ./momo_payment.py:/app/momo_payment.py
+      - ./frontend/dist:/app/frontend/dist
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: antigravity-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      - BACKEND_URL=http://antigravity-gateway:5678
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - antigravity-gateway
+
+  mysql:
+    image: mysql:8.0
+    container_name: antigravity-mysql
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      - MYSQL_ROOT_PASSWORD=root_antigravity
+      - MYSQL_DATABASE=antigravity_db
+      - MYSQL_USER=antigravity
+      - MYSQL_PASSWORD=antigravity_secret
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -proot_antigravity --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+volumes:
+  mysql_data:
